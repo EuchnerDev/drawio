@@ -18,9 +18,14 @@
 	
 	Menus.prototype.createHelpLink = function(href)
 	{
-		var link = document.createElement('span');
+		var link = document.createElement('div');
 		link.setAttribute('title', mxResources.get('help'));
-		link.style.cssText = 'color:blue;text-decoration:underline;margin-left:8px;cursor:help;';
+		link.style.display = 'inline-flex';
+		link.style.alignItems = 'center';
+		link.style.cursor = 'help';
+		link.style.color = 'blue';
+		link.style.textDecoration = 'underline';
+		link.style.marginLeft = '4px';
 		
 		var icon = document.createElement('img');
 		mxUtils.setOpacity(icon, 50);
@@ -50,7 +55,75 @@
 	{
 		if (item != null)
 		{
-			item.firstChild.nextSibling.appendChild(this.createHelpLink(href));
+			var link = this.createHelpLink(href);
+			link.style.display = 'inline';
+			link.style.marginLeft = '8px';
+			item.firstChild.nextSibling.appendChild(link);
+		}
+	};
+
+	/**
+	 * Removes the given font from the list of custom fonts.
+	 */
+	Menus.prototype.removeCustomFont = function(name, url)
+	{
+		for (var i = 0; i < this.customFonts.length; i++)
+		{
+			if (this.customFonts[i].name == name &&
+				this.customFonts[i].url == url)
+			{
+				this.customFonts.splice(i, 1);
+				this.editorUi.fireEvent(
+					new mxEventObject('customFontsChanged',
+					'customFonts', this.customFonts));
+				
+				break;
+			}
+		}
+	};
+
+	/**
+	 * Returns true if the given font is in the list of custom fonts.
+	 */
+	Menus.prototype.containsFont = function(name, url)
+	{
+		for (var i = 0; i < this.customFonts.length; i++)
+		{
+			if (this.customFonts[i].name == name &&
+				this.customFonts[i].url == url)
+			{
+				return true;
+			}
+		}
+
+		for (var i = 0; i < this.defaultFonts.length; i++)
+		{
+			var value = this.defaultFonts[i];
+			
+			if ((typeof value !== 'string' &&
+				value.fontFamily == name &&
+				value.fontUrl == url) ||
+				(typeof value === 'string' &&
+				value == name && url == null))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	/**
+	 * Adds the given font to the list of custom fonts.
+	 */
+	Menus.prototype.addCustomFont = function(name, url)
+	{
+		if (name != null && !this.containsFont(name, url))
+		{
+			this.customFonts.push({name: name, url: url});
+			this.editorUi.fireEvent(
+				new mxEventObject('customFontsChanged',
+				'customFonts', this.customFonts));
 		}
 	};
 
@@ -61,17 +134,6 @@
 		var editorUi = this.editorUi;
 		var graph = editorUi.editor.graph;
 		var isGraphEnabled = mxUtils.bind(graph, graph.isEnabled);
-		var googleEnabled = ((urlParams['embed'] != '1' && urlParams['gapi'] != '0') ||
-			(urlParams['embed'] == '1' && urlParams['gapi'] == '1')) && mxClient.IS_SVG &&
-			isLocalStorage && (document.documentMode == null || document.documentMode >= 10);
-		var dropboxEnabled = ((urlParams['embed'] != '1' && urlParams['db'] != '0') || (urlParams['embed'] == '1' && urlParams['db'] == '1')) &&
-			mxClient.IS_SVG && (document.documentMode == null || document.documentMode > 9);
-		var oneDriveEnabled = (window.location.hostname == 'www.draw.io' || window.location.hostname == 'test.draw.io' ||
-			window.location.hostname == 'drive.draw.io' || window.location.hostname == 'app.diagrams.net') &&
-			(((urlParams['embed'] != '1' && urlParams['od'] != '0') || (urlParams['embed'] == '1' && urlParams['od'] == '1')) &&
-			!mxClient.IS_IOS && (navigator.userAgent.indexOf('MSIE') < 0 || document.documentMode >= 10));
-		var trelloEnabled = urlParams['tr'] == '1' && mxClient.IS_SVG && (document.documentMode == null ||
-			document.documentMode > 9);
 
 		if (!mxClient.IS_SVG && !editorUi.isOffline())
 		{
@@ -90,71 +152,6 @@
 		editorUi.actions.addAction('new...', function()
 		{
 			var compact = editorUi.isOffline();
-			
-			if (!compact && urlParams['newTempDlg'] == '1' && editorUi.mode == App.MODE_GOOGLE)
-			{
-				function driveObjToTempDlg(item)
-				{
-					return {id: item.id, isExt: true, url: item.downloadUrl, title: item.title, imgUrl: item.thumbnailLink,
-							changedBy: item.lastModifyingUserName, lastModifiedOn: item.modifiedDate}
-				};
-				
-				var tempDlg = new TemplatesDialog(editorUi, function(templateXml, title, infoObj)
-				{
-					var templateLibs = infoObj.libs, templateClibs = infoObj.clibs;
-
-					editorUi.pickFolder(editorUi.mode, function(folderId)
-					{
-						editorUi.createFile(title, templateXml, (templateLibs != null &&
-							templateLibs.length > 0) ? templateLibs : null, null, function()
-						{
-							editorUi.hideDialog();
-						}, null, folderId, null, (templateClibs != null &&
-							templateClibs.length > 0) ? templateClibs : null);
-					}, editorUi.stateArg == null ||
-						editorUi.stateArg.folderId == null);
-					
-				}, null, null, null, 'user', function(callback, error, username)
-				{
-					var oneWeek = new Date();
-					oneWeek.setDate(oneWeek.getDate() - 7);
-					
-					editorUi.drive.listFiles(null, oneWeek, username? true : false, function(resp)
-					{
-						var results = [];
-						
-						for (var i = 0; i < resp.items.length; i++)
-						{
-							results.push(driveObjToTempDlg(resp.items[i]));
-						}
-						
-						callback(results);
-					}, error)
-				}, function(str, callback, error, username)
-				{
-					editorUi.drive.listFiles(str, null, username? true : false, function(resp)
-					{
-						var results = [];
-						
-						for (var i = 0; i < resp.items.length; i++)
-						{
-							results.push(driveObjToTempDlg(resp.items[i]));
-						}
-						
-						callback(results);
-					}, error)
-				}, function(obj, callback, error)
-				{
-					editorUi.drive.getFile(obj.id, function(file)
-					{
-						callback(file.data);
-					}, error);
-				}, null, null, false, false);
-				
-				editorUi.showDialog(tempDlg.container, window.innerWidth, window.innerHeight, true, false, null, false, true);
-
-				return;	
-			};
 			
 			var dlg = new NewDialog(editorUi, compact, !(editorUi.mode == App.MODE_DEVICE && 'chooseFileSystemEntries' in window));
 
@@ -340,16 +337,19 @@
 			return editorUi.isAutoDarkMode(true);
 		});
 
-        var toggleSimpleModeAction = editorUi.actions.put('toggleSimpleMode', new Action(mxResources.get('simple'), function(e)
-        {
-			editorUi.setCurrentTheme((Editor.currentTheme == 'simple') ?
-				((!Editor.isDarkMode()) ? 'kennedy' : 'dark') : 'simple');
-        }));
+		if (mxUtils.indexOf(Editor.themes, 'simple') >= 0)
+		{
+			var toggleSimpleModeAction = editorUi.actions.put('toggleSimpleMode', new Action(mxResources.get('simple'), function(e)
+			{
+				editorUi.setCurrentTheme((Editor.currentTheme == 'simple') ?
+					((!Editor.isDarkMode()) ? 'kennedy' : 'dark') : 'simple');
+			}));
 
-		toggleSimpleModeAction.setToggleAction(true);
-		toggleSimpleModeAction.visible = Editor.currentTheme != 'min' && Editor.currentTheme != 'sketch' &&
-			Editor.currentTheme != 'atlas';
-		toggleSimpleModeAction.setSelectedCallback(function() { return Editor.currentTheme == 'simple'; });
+			toggleSimpleModeAction.setToggleAction(true);
+			toggleSimpleModeAction.visible = Editor.currentTheme != 'min' && Editor.currentTheme != 'sketch' &&
+				Editor.currentTheme != 'atlas';
+			toggleSimpleModeAction.setSelectedCallback(function() { return Editor.currentTheme == 'simple'; });
+		}
 
         var toggleSketchModeAction = editorUi.actions.put('toggleSketchMode', new Action(mxResources.get('sketch'), function(e)
         {
@@ -377,7 +377,7 @@
 						var withBrush = !mxClient.IS_IE && !mxClient.IS_IE11;
 						editorUi.freehandWindow = new FreehandWindow(
 							editorUi, document.body.offsetWidth - 420, 102, 176,
-							withBrush? 120 : 84, withBrush);
+							withBrush? 126 : 90, withBrush);
 					}
 					
 					if (graph.freehand.isDrawing())
@@ -624,8 +624,7 @@
 				if (isDrawioWeb)
 				{
 					transparentBkg = editorUi.addCheckbox(div,
-							mxResources.get('transparentBackground'), false);
-					
+						mxResources.get('transparentBackground'), false);
 					dlgH += 30;
 				}
 
@@ -836,24 +835,16 @@
 				'https://www.drawio.com/doc/faq/export-diagram',
 				mxUtils.bind(this, function(scale, transparentBackground, ignoreSelection,
 					addShadow, editable, embedImages, border, cropImage, currentPage,
-					linkTarget, grid, theme, exportType, embedFonts, lblToSvg)
+					linkTarget, grid, theme, exportType, embedFonts)
 				{
 					var val = parseInt(scale);
 					editorUi.lastExportSvgEditable = editable;
 					
 					if (!isNaN(val) && val > 0)
 					{
-						if (lblToSvg)
-						{
-							editorUi.downloadFile('remoteSvg', null, null, ignoreSelection, null, cropImage,
-								transparentBackground, scale, border, null, editable);
-						}
-						else
-						{
-							editorUi.exportSvg(val / 100, transparentBackground, ignoreSelection,
-								addShadow, editable, embedImages, border, !cropImage, false,
-								linkTarget, theme, exportType, embedFonts);
-						}
+						editorUi.exportSvg(val / 100, transparentBackground, ignoreSelection,
+							addShadow, editable, embedImages, border, !cropImage, false,
+							linkTarget, theme, exportType, embedFonts);
 					}
 				}), true, editorUi.lastExportSvgEditable, 'svg', true);
 		}));
@@ -1007,6 +998,34 @@
 		}), null, null, Editor.ctrlKey + '+K');
 		action.setToggleAction(true);
 		action.setSelectedCallback(mxUtils.bind(this, function() { return this.tagsWindow != null && this.tagsWindow.window.isVisible(); }));
+
+		if (Editor.gptApiKey != null && Editor.gptModel != null && Editor.gptUrl != null &&
+			!editorUi.isOffline() && !EditorUi.isElectronApp)
+		{
+			action = editorUi.actions.addAction('chatWindowTitle', mxUtils.bind(this, function()
+			{
+				if (this.chatWindow == null)
+				{
+					this.chatWindow = new ChatWindow(editorUi, 220, document.body.offsetHeight - 380, 250, 320);
+					this.chatWindow.window.addListener('show', mxUtils.bind(this, function()
+					{
+						editorUi.fireEvent(new mxEventObject('chat'));
+					}));
+					this.chatWindow.window.addListener('hide', function()
+					{
+						editorUi.fireEvent(new mxEventObject('chat'));
+					});
+					this.chatWindow.window.setVisible(true);
+					editorUi.fireEvent(new mxEventObject('chat'));
+				}
+				else
+				{
+					this.chatWindow.window.setVisible(!this.chatWindow.window.isVisible());
+				}
+			}));
+			action.setToggleAction(true);
+			action.setSelectedCallback(mxUtils.bind(this, function() { return this.chatWindow != null && this.chatWindow.window.isVisible(); }));
+		}
 
 		action = editorUi.actions.addAction('findReplace', mxUtils.bind(this, function(arg1, evt)
 		{
@@ -1312,7 +1331,7 @@
 							}
 							else
 							{
-								elt.style.backgroundImage = 'url(' + ((Editor.isDarkMode()) ?
+								elt.style.backgroundImage = 'url(' + ((Editor.isDarkMode() || Editor.cssDarkMode) ?
 									Editor.darkModeImage : Editor.lightModeImage) + ')';
 							}
 						});
@@ -1410,13 +1429,13 @@
 				var title = document.createElement('div');
 				title.style.marginTop = '6px';
 				title.style.display = 'inline-block';
-				title.style.width = '140px';
+				title.style.width = '180px';
 				mxUtils.write(title, mxResources.get('orgChartType') + ': ');
 				
 				div.appendChild(title);
 				
 				var typeSelect = document.createElement('select');
-				typeSelect.style.width = '200px';
+				typeSelect.style.width = '160px';
 				typeSelect.style.boxSizing = 'border-box';
 				
 				//Types are hardcoded here since the code is not loaded yet
@@ -1454,14 +1473,14 @@
 				title = document.createElement('div');
 				title.style.marginTop = '6px';
 				title.style.display = 'inline-block';
-				title.style.width = '140px';
+				title.style.width = '180px';
 				mxUtils.write(title, mxResources.get('parentChildSpacing') + ': ');
 				div.appendChild(title);
 				
 				var parentChildSpacing = document.createElement('input');
 				parentChildSpacing.type = 'number';
 				parentChildSpacing.value = parentChildSpacingVal;
-				parentChildSpacing.style.width = '200px';
+				parentChildSpacing.style.width = '160px';
 				parentChildSpacing.style.boxSizing = 'border-box';
 				div.appendChild(parentChildSpacing);
 				
@@ -1473,14 +1492,14 @@
 				title = document.createElement('div');
 				title.style.marginTop = '6px';
 				title.style.display = 'inline-block';
-				title.style.width = '140px';
+				title.style.width = '180px';
 				mxUtils.write(title, mxResources.get('siblingSpacing') + ': ');
 				div.appendChild(title);
 				
 				var siblingSpacing = document.createElement('input');
 				siblingSpacing.type = 'number';
 				siblingSpacing.value = siblingSpacingVal;
-				siblingSpacing.style.width = '200px';
+				siblingSpacing.style.width = '160px';
 				siblingSpacing.style.boxSizing = 'border-box';
 				div.appendChild(siblingSpacing);
 				
@@ -1652,7 +1671,8 @@
 		{
 			var lang = Graph.diagramLanguage || '';
 					
-			var dlg = new FilenameDialog(editorUi, lang, mxResources.get('ok'), mxUtils.bind(this, function(newLang)
+			var dlg = new FilenameDialog(editorUi, lang, mxResources.get('ok'),
+				mxUtils.bind(this, function(newLang)
 			{
 				if (newLang != null)
 				{
@@ -1660,8 +1680,9 @@
 					Graph.translateDiagram = true;
 					graph.refresh();
 				}
-			}), mxResources.get('languageCode'), null, null, 'https://www.drawio.com/blog/translate-diagrams');
-			editorUi.showDialog(dlg.container, 340, 96, true, true);
+			}), mxResources.get('languageCode'), null, null,
+				'https://www.drawio.com/blog/translate-diagrams');
+			editorUi.showDialog(dlg.container, 340, 80, true, true);
 			dlg.init();
 		});
 		
@@ -2782,10 +2803,6 @@
 			editorUi.setCssDarkModeEnabled(!Editor.enableCssDarkMode);
 		});
 		
-		action.isEnabled = function()
-		{
-			return Editor.isDarkMode() || Editor.cssDarkMode;
-		};
 		action.setToggleAction(true);
 		action.setSelectedCallback(function()
 		{
@@ -2858,7 +2875,8 @@
 				//Add support to saving files if embedded mode is running with files
 				var file = editorUi.getCurrentFile();
 				
-				if (file != null && file.constructor != EmbedFile && (file.constructor != LocalFile || file.mode != null))
+				if (file != null && file.constructor != EmbedFile &&
+					(file.constructor != LocalFile || file.mode != null))
 				{
 					editorUi.saveFile();
 				}
@@ -3096,7 +3114,7 @@
 						pickFileFromService(editorUi.drive);
 					}, parent);
 				}
-				else if (googleEnabled && typeof window.DriveClient === 'function')
+				else if (editorUi.isModeEnabled(App.MODE_GOOGLE))
 				{
 					menu.addItem(mxResources.get('googleDrive') + ' (' + mxResources.get('loading') + '...)', null, function()
 					{
@@ -3105,14 +3123,14 @@
 				}
 			}
 
-			if (editorUi.oneDrive != null)
+			if (editorUi.isModeReady(App.MODE_ONEDRIVE))
 			{
 				menu.addItem(mxResources.get('oneDrive') + '...', null, function()
 				{
 					pickFileFromService(editorUi.oneDrive);
 				}, parent);
 			}
-			else if (oneDriveEnabled && typeof window.OneDriveClient === 'function')
+			else if (editorUi.isModeEnabled(App.MODE_ONEDRIVE))
 			{
 				menu.addItem(mxResources.get('oneDrive') + ' (' + mxResources.get('loading') + '...)', null, function()
 				{
@@ -3120,14 +3138,14 @@
 				}, parent, null, false);
 			}
 
-			if (editorUi.dropbox != null)
+			if (editorUi.isModeReady(App.MODE_DROPBOX))
 			{
 				menu.addItem(mxResources.get('dropbox') + '...', null, function()
 				{
 					pickFileFromService(editorUi.dropbox);
 				}, parent);
 			}
-			else if (dropboxEnabled && typeof window.DropboxClient === 'function')
+			else if (editorUi.isModeEnabled(App.MODE_DROPBOX))
 			{
 				menu.addItem(mxResources.get('dropbox') + ' (' + mxResources.get('loading') + '...)', null, function()
 				{
@@ -3137,7 +3155,7 @@
 			
 			menu.addSeparator(parent);
 			
-			if (editorUi.gitHub != null)
+			if (editorUi.isModeReady(App.MODE_GITHUB))
 			{
 				menu.addItem(mxResources.get('github') + '...', null, function()
 				{
@@ -3145,7 +3163,7 @@
 				}, parent);
 			}
 			
-			if (editorUi.gitLab != null)
+			if (editorUi.isModeReady(App.MODE_GITLAB))
 			{
 				menu.addItem(mxResources.get('gitlab') + '...', null, function()
 				{
@@ -3153,14 +3171,14 @@
 				}, parent);
 			}
 
-			if (editorUi.trello != null)
+			if (editorUi.isModeReady(App.MODE_TRELLO))
 			{
 				menu.addItem(mxResources.get('trello') + '...', null, function()
 				{
 					pickFileFromService(editorUi.trello);
 				}, parent);
 			}
-			else if (trelloEnabled && typeof window.TrelloClient === 'function')
+			else if (editorUi.isModeEnabled(App.MODE_TRELLO))
 			{
 				menu.addItem(mxResources.get('trello') + ' (' + mxResources.get('loading') + '...)', null, function()
 				{
@@ -3315,7 +3333,7 @@
 			editorUi.userPanel.style.right = '10px';
 			editorUi.userPanel.style.top = '10px';
 		});
-		
+
 		this.put('theme', new Menu(mxUtils.bind(this, function(menu, parent)
 		{
 			var theme = (urlParams['sketch'] == '1') ? 'sketch' : mxSettings.getUi();
@@ -3342,44 +3360,22 @@
 				menu.addCheckmark(item, Editor.checkmarkImage);
 			}
 
-			item = menu.addItem(mxResources.get('simple'), null, function()
+			for (var i = 0; i < Editor.themes.length; i++)
 			{
-				editorUi.setCurrentTheme('simple');
-			}, parent);
+				(mxUtils.bind(this, function(key)
+				{
+					item = menu.addItem(mxResources.get((key == 'min') ?
+						'minimal' : key), null, function()
+					{
+						editorUi.setCurrentTheme(key);
+					}, parent);
+	
+					if (theme == key)
+					{
+						menu.addCheckmark(item, Editor.checkmarkImage);
+					}
 
-			if (theme == 'simple')
-			{
-				menu.addCheckmark(item, Editor.checkmarkImage);
-			}
-
-			item = menu.addItem(mxResources.get('sketch'), null, function()
-			{
-				editorUi.setCurrentTheme('sketch');
-			}, parent);
-			
-			if (theme == 'sketch')
-			{
-				menu.addCheckmark(item, Editor.checkmarkImage);
-			}
-
-			item = menu.addItem(mxResources.get('minimal'), null, function()
-			{
-				editorUi.setCurrentTheme('min');
-			}, parent);
-			
-			if (theme == 'min')
-			{
-				menu.addCheckmark(item, Editor.checkmarkImage);
-			}
-			
-			item = menu.addItem(mxResources.get('atlas'), null, function()
-			{
-				editorUi.setCurrentTheme('atlas');
-			}, parent);
-			
-			if (theme == 'atlas')
-			{
-				menu.addCheckmark(item, Editor.checkmarkImage);
+				})(Editor.themes[i]));
 			}
 		})));
 
@@ -3430,7 +3426,7 @@
 						editorUi.showError(mxResources.get('error'), mxResources.get('invalidName'), mxResources.get('ok'));
 						
 						return false;
-					}, null, null, null, null, editorUi.editor.fileExtensions);
+					}, null, FilenameDialog.filenameHelpLink, null, null, editorUi.editor.fileExtensions);
 					this.editorUi.showDialog(dlg.container, 340, 96, true, true);
 					dlg.init();
 				}
@@ -3875,8 +3871,10 @@
 
 				if (uiTheme == 'min' || Editor.currentTheme == 'simple')
 				{
-					this.addSubmenu('table', menu, parent);
 					this.addSubmenu('layout', menu, parent);
+					this.addSubmenu('insertLayout', menu, parent, mxResources.get('insert'));
+					menu.addSeparator(parent);
+					this.addSubmenu('table', menu, parent);
 				}
 				else
 				{
@@ -3963,7 +3961,7 @@
 					editorUi.pickFile(App.MODE_GOOGLE);
 				}, parent);
 			}
-			else if (googleEnabled && typeof window.DriveClient === 'function')
+			else if (editorUi.isModeEnabled(App.MODE_GOOGLE))
 			{
 				menu.addItem(mxResources.get('googleDrive') + ' (' + mxResources.get('loading') + '...)', null, function()
 				{
@@ -3971,29 +3969,29 @@
 				}, parent, null, false);
 			}
 			
-			if (editorUi.oneDrive != null)
+			if (editorUi.isModeReady(App.MODE_ONEDRIVE))
 			{
 				menu.addItem(mxResources.get('oneDrive') + '...', null, function()
 				{
 					editorUi.pickFile(App.MODE_ONEDRIVE);
 				}, parent);
 			}
-			else if (oneDriveEnabled && typeof window.OneDriveClient === 'function')
+			else if (editorUi.isModeEnabled(App.MODE_ONEDRIVE))
 			{
 				menu.addItem(mxResources.get('oneDrive') + ' (' + mxResources.get('loading') + '...)', null, function()
 				{
 					// do nothing
 				}, parent, null, false);
 			}
-			
-			if (editorUi.dropbox != null)
+
+			if (editorUi.isModeReady(App.MODE_DROPBOX))
 			{
 				menu.addItem(mxResources.get('dropbox') + '...', null, function()
 				{
 					editorUi.pickFile(App.MODE_DROPBOX);
 				}, parent);
 			}
-			else if (dropboxEnabled && typeof window.DropboxClient === 'function')
+			else if (editorUi.isModeEnabled(App.MODE_DROPBOX))
 			{
 				menu.addItem(mxResources.get('dropbox') + ' (' + mxResources.get('loading') + '...)', null, function()
 				{
@@ -4003,7 +4001,7 @@
 
 			menu.addSeparator(parent);
 			
-			if (editorUi.gitHub != null)
+			if (editorUi.isModeReady(App.MODE_GITHUB))
 			{
 				menu.addItem(mxResources.get('github') + '...', null, function()
 				{
@@ -4011,7 +4009,7 @@
 				}, parent);
 			}
 			
-			if (editorUi.gitLab != null)
+			if (editorUi.isModeReady(App.MODE_GITLAB))
 			{
 				menu.addItem(mxResources.get('gitlab') + '...', null, function()
 				{
@@ -4019,14 +4017,14 @@
 				}, parent);
 			}
 
-			if (editorUi.trello != null)
+			if (editorUi.isModeReady(App.MODE_TRELLO))
 			{
 				menu.addItem(mxResources.get('trello') + '...', null, function()
 				{
 					editorUi.pickFile(App.MODE_TRELLO);
 				}, parent);
 			}
-			else if (trelloEnabled && typeof window.TrelloClient === 'function')
+			else if (editorUi.isModeEnabled(App.MODE_TRELLO))
 			{
 				menu.addItem(mxResources.get('trello') + ' (' + mxResources.get('loading') + '...)', null, function()
 				{
@@ -4069,7 +4067,7 @@
 							}
 							else
 							{
-								window.openWindow(((mxClient.IS_CHROMEAPP) ?
+								window.geOpenWindow(((mxClient.IS_CHROMEAPP) ?
 									'https://www.draw.io/' : 'https://' + location.host + '/') +
 									window.location.search + '#U' + encodeURIComponent(fileUrl));
 							}
@@ -4094,7 +4092,7 @@
 							editorUi.showLibraryDialog(null, null, null, null, App.MODE_GOOGLE);
 						}, parent);
 					}
-					else if (googleEnabled && typeof window.DriveClient === 'function')
+					else if (editorUi.isModeEnabled(App.MODE_GOOGLE))
 					{
 						menu.addItem(mxResources.get('googleDrive') + ' (' + mxResources.get('loading') + '...)', null, function()
 						{
@@ -4103,14 +4101,14 @@
 					}
 				}
 
-				if (editorUi.oneDrive != null)
+				if (editorUi.isModeReady(App.MODE_ONEDRIVE))
 				{
 					menu.addItem(mxResources.get('oneDrive') + '...', null, function()
 					{
 						editorUi.showLibraryDialog(null, null, null, null, App.MODE_ONEDRIVE);
 					}, parent);
 				}
-				else if (oneDriveEnabled && typeof window.OneDriveClient === 'function')
+				else if (editorUi.isModeEnabled(App.MODE_ONEDRIVE))
 				{
 					menu.addItem(mxResources.get('oneDrive') + ' (' + mxResources.get('loading') + '...)', null, function()
 					{
@@ -4118,14 +4116,14 @@
 					}, parent, null, false);
 				}
 
-				if (editorUi.dropbox != null)
+				if (editorUi.isModeReady(App.MODE_DROPBOX))
 				{
 					menu.addItem(mxResources.get('dropbox') + '...', null, function()
 					{
 						editorUi.showLibraryDialog(null, null, null, null, App.MODE_DROPBOX);
 					}, parent);
 				}
-				else if (dropboxEnabled && typeof window.DropboxClient === 'function')
+				else if (editorUi.isModeEnabled(App.MODE_DROPBOX))
 				{
 					menu.addItem(mxResources.get('dropbox') + ' (' + mxResources.get('loading') + '...)', null, function()
 					{
@@ -4135,7 +4133,7 @@
 				
 				menu.addSeparator(parent);
 				
-				if (editorUi.gitHub != null)
+				if (editorUi.isModeReady(App.MODE_GITHUB))
 				{
 					menu.addItem(mxResources.get('github') + '...', null, function()
 					{
@@ -4143,7 +4141,7 @@
 					}, parent);
 				}
 				
-				if (editorUi.gitLab != null)
+				if (editorUi.isModeReady(App.MODE_GITLAB))
 				{
 					menu.addItem(mxResources.get('gitlab') + '...', null, function()
 					{
@@ -4151,14 +4149,14 @@
 					}, parent);
 				}
 
-				if (editorUi.trello != null)
+				if (editorUi.isModeReady(App.MODE_TRELLO))
 				{
 					menu.addItem(mxResources.get('trello') + '...', null, function()
 					{
 						editorUi.showLibraryDialog(null, null, null, null, App.MODE_TRELLO);
 					}, parent);
 				}
-				else if (trelloEnabled && typeof window.TrelloClient === 'function')
+				else if (editorUi.isModeEnabled(App.MODE_TRELLO))
 				{
 					menu.addItem(mxResources.get('trello') + ' (' + mxResources.get('loading') + '...)', null, function()
 					{
@@ -4197,7 +4195,7 @@
 							editorUi.pickLibrary(App.MODE_GOOGLE);
 						}, parent);
 					}
-					else if (googleEnabled && typeof window.DriveClient === 'function')
+					else if (editorUi.isModeEnabled(App.MODE_GOOGLE))
 					{
 						menu.addItem(mxResources.get('googleDrive') + ' (' + mxResources.get('loading') + '...)', null, function()
 						{
@@ -4206,14 +4204,14 @@
 					}
 				}
 
-				if (editorUi.oneDrive != null)
+				if (editorUi.isModeReady(App.MODE_ONEDRIVE))
 				{
 					menu.addItem(mxResources.get('oneDrive') + '...', null, function()
 					{
 						editorUi.pickLibrary(App.MODE_ONEDRIVE);
 					}, parent);
 				}
-				else if (oneDriveEnabled && typeof window.OneDriveClient === 'function')
+				else if (editorUi.isModeEnabled(App.MODE_ONEDRIVE))
 				{
 					menu.addItem(mxResources.get('oneDrive') + ' (' + mxResources.get('loading') + '...)', null, function()
 					{
@@ -4221,14 +4219,14 @@
 					}, parent, null, false);
 				}
 
-				if (editorUi.dropbox != null)
+				if (editorUi.isModeReady(App.MODE_DROPBOX))
 				{
 					menu.addItem(mxResources.get('dropbox') + '...', null, function()
 					{
 						editorUi.pickLibrary(App.MODE_DROPBOX);
 					}, parent);
 				}
-				else if (dropboxEnabled && typeof window.DropboxClient === 'function')
+				else if (editorUi.isModeEnabled(App.MODE_DROPBOX))
 				{
 					menu.addItem(mxResources.get('dropbox') + ' (' + mxResources.get('loading') + '...)', null, function()
 					{
@@ -4238,7 +4236,7 @@
 				
 				menu.addSeparator(parent);
 				
-				if (editorUi.gitHub != null)
+				if (editorUi.isModeReady(App.MODE_GITHUB))
 				{
 					menu.addItem(mxResources.get('github') + '...', null, function()
 					{
@@ -4246,7 +4244,7 @@
 					}, parent);
 				}
 				
-				if (editorUi.gitLab != null)
+				if (editorUi.isModeReady(App.MODE_GITLAB))
 				{
 					menu.addItem(mxResources.get('gitlab') + '...', null, function()
 					{
@@ -4254,14 +4252,14 @@
 					}, parent);
 				}
 
-				if (editorUi.trello != null)
+				if (editorUi.isModeReady(App.MODE_TRELLO))
 				{
 					menu.addItem(mxResources.get('trello') + '...', null, function()
 					{
 						editorUi.pickLibrary(App.MODE_TRELLO);
 					}, parent);
 				}
-				else if (trelloEnabled && typeof window.TrelloClient === 'function')
+				else if (editorUi.isModeEnabled(App.MODE_TRELLO))
 				{
 					menu.addItem(mxResources.get('trello') + ' (' + mxResources.get('loading') + '...)', null, function()
 					{
@@ -4411,8 +4409,8 @@
 		viewPanelsMenu.funct = function(menu, parent)
 		{
 			var file = editorUi.getCurrentFile();
-			editorUi.menus.addMenuItems(menu, ['toggleShapes', 'format', 'ruler',
-				'-', 'findReplace', 'layers', 'tags', 'outline', '-'], parent);
+			editorUi.menus.addMenuItems(menu, ['toggleShapes', 'format', 'ruler', '-',
+				'findReplace', 'layers', 'tags', 'chatWindowTitle', 'outline', '-'], parent);
 
 			if (editorUi.commentsSupported())
 			{
@@ -4453,7 +4451,7 @@
 				}
 				
 				editorUi.menus.addMenuItems(menu, ['-', 'findReplace',
-					'layers', 'tags', 'outline', '-'], parent);
+					'layers', 'tags', 'chatWindowTitle', 'outline', '-'], parent);
 				
 				if (editorUi.commentsSupported())
 				{
@@ -4469,7 +4467,7 @@
 			}
 			else
 			{
-				this.addMenuItems(menu, (['format', 'outline', 'layers', 'tags']).
+				this.addMenuItems(menu, (['format', 'outline', 'layers', 'tags', 'chatWindowTitle']).
 					concat((editorUi.commentsSupported()) ?
 					['comments', '-'] : ['-']));
 				
@@ -4665,7 +4663,8 @@
 
 			editorUi.actions.addAction('drafts...', function()
 			{
-				var dlg = new FilenameDialog(editorUi, (EditorUi.draftSaveDelay / 1000) + '', mxResources.get('apply'), mxUtils.bind(this, function(newValue)
+				var dlg = new FilenameDialog(editorUi, (EditorUi.draftSaveDelay / 1000) + '',
+					mxResources.get('apply'), mxUtils.bind(this, function(newValue)
 				{
 					var val = parseInt(newValue);
 					
@@ -4676,7 +4675,7 @@
 						mxSettings.setDraftSaveDelay(val);
 						mxSettings.save();		
 					}
-				}), mxResources.get('draftSaveInt'), null, null, null, null, null, null, 50, 250);
+				}), mxResources.get('draftSaveInt'));
 				editorUi.showDialog(dlg.container, 320, 80, true, true);
 				dlg.init();
 			});
@@ -4812,71 +4811,13 @@
 				}
 
 				this.addMenuItems(menu, ['configuration'], parent);
-				
-				// Adds trailing separator in case new plugin entries are added
-				menu.addSeparator(parent);
-				
-				if (urlParams['newTempDlg'] == '1')
-				{
-					editorUi.actions.addAction('templates', function()
-					{
-						function driveObjToTempDlg(item)
-						{
-							return {id: item.id, isExt: true, url: item.downloadUrl, title: item.title, imgUrl: item.thumbnailLink,
-									changedBy: item.lastModifyingUserName, lastModifiedOn: item.modifiedDate}
-						};
-						
-						var tempDlg = new TemplatesDialog(editorUi, function(xml){console.log(arguments)}, null,
-								null, null, 'user', function(callback, error, username)
-						{
-							var oneWeek = new Date();
-							oneWeek.setDate(oneWeek.getDate() - 7);
-							
-							editorUi.drive.listFiles(null, oneWeek, username? true : false, function(resp)
-							{
-								var results = [];
-								
-								for (var i = 0; i < resp.items.length; i++)
-								{
-									results.push(driveObjToTempDlg(resp.items[i]));
-								}
-								
-								callback(results);
-							}, error)
-						}, function(str, callback, error, username)
-						{
-							editorUi.drive.listFiles(str, null, username? true : false, function(resp)
-							{
-								var results = [];
-								
-								for (var i = 0; i < resp.items.length; i++)
-								{
-									results.push(driveObjToTempDlg(resp.items[i]));
-								}
-								
-								callback(results);
-							}, error)
-						}, function(obj, callback, error)
-						{
-							editorUi.drive.getFile(obj.id, function(file)
-							{
-								callback(file.data);
-							}, error);
-						}, null, function(callback)
-						{
-							callback({'Test': []}, 1);
-						}, true, false);
-						
-						editorUi.showDialog(tempDlg.container, window.innerWidth, window.innerHeight, true, false, null, false, true);
-					});
-					this.addMenuItem(menu, 'templates', parent);
-				}
 			}
 		})));
 
 		this.put('movePage', new Menu(mxUtils.bind(this, function(menu, parent)
 		{
-			var current = editorUi.getSelectedPageIndex();
+			var currentPage = editorUi.currentPage;
+			var current = editorUi.getPageIndex(currentPage);
 
 			if (editorUi.pages != null)
 			{
@@ -4889,6 +4830,7 @@
 							menu.addItem(editorUi.getShortPageName(editorUi.pages[index]), null, function()
 							{
 								editorUi.movePage(current, index);
+								editorUi.scrollToPage(currentPage, true);
 							}, parent);
 						})(i);
 					}
@@ -4976,7 +4918,8 @@
 				if (Editor.currentTheme == 'min')
 				{
 					editorUi.menus.addMenuItems(menu, ['toggleShapes', 'format',
-						'layers', 'tags', '-', 'findReplace'], parent);
+						'layers', 'tags', 'chatWindowTitle', '-',
+						'findReplace'], parent);
 			
 					if (editorUi.commentsSupported())
 					{
@@ -5007,7 +4950,8 @@
 					editorUi.menus.addMenuItems(menu, ['comments', '-'], parent);
 				}
 
-				editorUi.menus.addMenuItems(menu, ['toggleShapes', 'format', 'layers', 'tags', '-'], parent);	
+				editorUi.menus.addMenuItems(menu, ['toggleShapes', 'format',
+					'layers', 'tags', 'chatWindowTitle', '-'], parent);	
 				editorUi.menus.addMenuItems(menu, ['pageSetup'], parent);
 			}
 			else if (Editor.currentTheme != 'min')
@@ -5412,51 +5356,6 @@
 			}
 		})));
 		
-		/**
-		 * External Fonts undoable change
-		 */
-		function ChangeExtFonts(ui, extFonts, customFonts)
-		{
-			this.ui = ui;
-			this.extFonts = extFonts;
-			this.previousExtFonts = extFonts;
-			this.customFonts = customFonts;
-			this.prevCustomFonts = customFonts;
-		};
-
-		/**
-		 * Implementation of the undoable External Fonts Change.
-		 */
-		ChangeExtFonts.prototype.execute = function()
-		{
-			var graph = this.ui.editor.graph;
-			this.customFonts = this.prevCustomFonts;
-			this.prevCustomFonts = this.ui.menus.customFonts;
-			this.ui.fireEvent(new mxEventObject('customFontsChanged', 'customFonts', this.customFonts));
-			
-			this.extFonts = this.previousExtFonts;
-			var tmp = graph.extFonts;
-			
-			for (var i = 0; tmp != null && i < tmp.length; i++)
-			{
-				var fontElem = document.getElementById('extFont_' + tmp[i].name);
-				
-				if (fontElem != null)
-				{
-					fontElem.parentNode.removeChild(fontElem);
-				}
-			}
-			
-			graph.extFonts = [];
-			
-			for (var i = 0; this.previousExtFonts != null && i < this.previousExtFonts.length; i++)
-			{
-				this.ui.editor.graph.addExtFont(this.previousExtFonts[i].name, this.previousExtFonts[i].url);
-			}
-			
-			this.previousExtFonts = tmp;
-		};
-
 		//Replace the default font family menu
 		this.put('fontFamily', new Menu(mxUtils.bind(this, function(menu, parent)
 		{
@@ -5464,29 +5363,15 @@
 			{
 				var graph = editorUi.editor.graph;
 
-				var tr = this.styleChange(menu, fontLabel || fontName,
-					(urlParams['ext-fonts'] != '1') ?
-						[mxConstants.STYLE_FONTFAMILY, 'fontSource', 'FType'] : [mxConstants.STYLE_FONTFAMILY],
-					(urlParams['ext-fonts'] != '1') ?
-						[fontName, (fontUrl != null) ? encodeURIComponent(fontUrl) : null, null] : [fontName],
+				var tr = this.styleChange(menu, (fontLabel != null) ? fontLabel : fontName,
+					[mxConstants.STYLE_FONTFAMILY, 'fontSource', 'FType'],
+					[fontName, (fontUrl != null) ? encodeURIComponent(fontUrl) : null, null],
 					null, parent, function()
 				{
-					if (urlParams['ext-fonts'] != '1')
-					{
-						graph.setFont(fontName, fontUrl);
-					}
-					else
-					{
-						document.execCommand('fontname', false, fontName);
-						//Add the font to the file in case it was a previous font from the settings
-						graph.addExtFont(fontName, fontUrl);
-					}
-					
+					graph.setFont(fontName, fontUrl);
 					editorUi.fireEvent(new mxEventObject('styleChanged',
-						'keys', (urlParams['ext-fonts'] != '1') ?
-							[mxConstants.STYLE_FONTFAMILY, 'fontSource', 'FType'] : [mxConstants.STYLE_FONTFAMILY],
-						'values', (urlParams['ext-fonts'] != '1') ?
-							[fontName, (fontUrl != null) ? encodeURIComponent(fontUrl) : null, null] : [fontName],
+						'keys', [mxConstants.STYLE_FONTFAMILY, 'fontSource', 'FType'],
+						'values', [fontName, (fontUrl != null) ? encodeURIComponent(fontUrl) : null, null],
 						'cells', [graph.cellEditor.getEditingCell()]));
 				}, function()
 				{
@@ -5500,71 +5385,26 @@
 							graph.replaceElement(elt, 'div');
 						}
 					});
-					
-					//Add the font to the file in case it was a previous font from the settings
-					if (urlParams['ext-fonts'] == '1')
-					{
-						graph.addExtFont(fontName, fontUrl);
-					}
 				});
 				
 				if (deletable)
 				{
-					var img = document.createElement('span');
-					img.className = 'geSprite geSprite-delete';
-					img.style.cursor = 'pointer';
-					img.style.display = 'inline-block';
+					var img = document.createElement('img');
+					img.className = 'geAdaptiveAsset';
+					img.setAttribute('src', Editor.crossImage);
+					img.setAttribute('title', mxResources.get('delete'));
+					img.setAttribute('valign', 'absmiddle');
+					img.setAttribute('border', '0');
+					img.style.position = 'relative';
+					img.style.top = '2px';
+					img.style.width = '14px';
+					img.style.cursor = 'default';
+					img.style.margin = '0 3px';
 					tr.firstChild.nextSibling.nextSibling.appendChild(img);
 					
 					mxEvent.addListener(img, (mxClient.IS_POINTER) ? 'pointerup' : 'mouseup', mxUtils.bind(this, function(evt)
 					{
-						if (urlParams['ext-fonts'] != '1')
-						{
-							delete Graph.recentCustomFonts[fontName.toLowerCase()];
-							
-							for (var i = 0; i < this.customFonts.length; i++)
-							{
-								if (this.customFonts[i].name == fontName &&
-									this.customFonts[i].url == fontUrl)
-								{
-									this.customFonts.splice(i, 1);
-									editorUi.fireEvent(new mxEventObject('customFontsChanged'));
-									
-									break;
-								}
-							}
-						}
-						else
-						{
-							var extFonts = mxUtils.clone(this.editorUi.editor.graph.extFonts);
-							
-							if (extFonts != null && extFonts.length > 0)
-							{
-								for (var i = 0; i < extFonts.length; i++)
-								{
-									if (extFonts[i].name == fontName)
-									{
-										extFonts.splice(i, 1);
-										break;
-									}
-								}
-							}
-							
-							var customFonts = mxUtils.clone(this.customFonts);
-							
-							for (var i = 0; i < customFonts.length; i++)
-							{
-								if (customFonts[i].name == fontName)
-								{
-									customFonts.splice(i, 1);
-									break;
-								}
-							}
-							
-							var change = new ChangeExtFonts(this.editorUi, extFonts, customFonts);
-							this.editorUi.editor.graph.model.execute(change);
-						}
-						
+						this.removeCustomFont(fontName, fontUrl);
 						this.editorUi.hideCurrentMenu();
 						mxEvent.consume(evt);
 					}));
@@ -5573,10 +5413,14 @@
 				Graph.addFont(fontName, fontUrl);
 				tr.firstChild.nextSibling.style.fontFamily = fontName;
 				
-				if (tooltip != null)
+				var tooltip = (fontLabel != null) ? fontLabel : fontName;
+						
+				if (fontUrl != null)
 				{
-					tr.setAttribute('title', tooltip);
+					tooltip += ' (' + fontUrl + ')';
 				}
+
+				tr.setAttribute('title', tooltip);
 			});
 			
 			var reserved = {};
@@ -5598,142 +5442,80 @@
 			}
 
 			menu.addSeparator(parent);
+		
+			// Special entries in the font menu are composed of custom fonts
+			// from the local storage and actual used fonts in the file
+			var duplicates = {};
+			var fontNames = {};
+			var entries = [];
 			
-			if (urlParams['ext-fonts'] != '1')
+			function addEntry(entry)
 			{
-				// Special entries in the font menu are composed of custom fonts
-				// from the local storage and actual used fonts in the file
-				var duplicates = {};
-				var fontNames = {};
-				var entries = [];
-				
-				function addEntry(entry)
+				var key = encodeURIComponent(entry.name) +
+					((entry.url == null) ? '' :
+					'@' + encodeURIComponent(entry.url));
+					
+				if (!reserved[key])
 				{
-					var key = encodeURIComponent(entry.name) +
-						((entry.url == null) ? '' :
-						'@' + encodeURIComponent(entry.url));
-						
-					if (!reserved[key])
+					var label = entry.name;
+					var counter = 0;
+					
+					while (fontNames[label.toLowerCase()] != null)
 					{
-						var label = entry.name;
-						var counter = 0;
-						
-						while (fontNames[label.toLowerCase()] != null)
-						{
-							label = entry.name + ' (' + (++counter) + ')';
-						}
-						
-						if (duplicates[key] == null)
-						{
-							entries.push({name: entry.name, url: entry.url,
-								label: label, title: entry.url});
-							fontNames[label.toLowerCase()] = entry;
-							duplicates[key] = entry;
-						}
+						label = entry.name + ' (' + (++counter) + ')';
 					}
-				};
-				
-				// Adds custom user defined fonts from local storage
-				for (var i = 0; i < this.customFonts.length; i++)
-				{
-					addEntry(this.customFonts[i]);
+					
+					if (duplicates[key] == null)
+					{
+						entries.push({name: entry.name, url: entry.url,
+							label: label, title: entry.url});
+						fontNames[label.toLowerCase()] = entry;
+						duplicates[key] = entry;
+					}
 				}
-				
-				// Adds fonts that were recently used in the editor
-				for (var key in Graph.recentCustomFonts)
+			};
+			
+			// Adds custom user-defined fonts from local storage
+			for (var i = 0; i < this.customFonts.length; i++)
+			{
+				addEntry(this.customFonts[i]);
+			}
+			
+			// Sorts by label
+			entries.sort(function(a, b)
+			{
+				if (a.label < b.label)
 				{
-					addEntry(Graph.recentCustomFonts[key]);
+					return -1;
 				}
-				
-				// Sorts by label
-				entries.sort(function(a, b)
+				else if (a.label > b.label)
 				{
-					if (a.label < b.label)
-					{
-						return -1;
-					}
-					else if (a.label > b.label)
-					{
-						return 1;
-					}
-					else
-					{
-						return 0;
-					}
-				});
-				
-				if (entries.length > 0)
-				{
-					for (var i = 0; i < entries.length; i++)
-					{
-						addItem(entries[i].name, entries[i].url, true,
-							entries[i].label, entries[i].url);
-					}
-	
-					menu.addSeparator(parent);
+					return 1;
 				}
-				
-				menu.addItem(mxResources.get('reset'), null, mxUtils.bind(this, function()
+				else
 				{
-					Graph.recentCustomFonts = {};
-					this.customFonts = [];
-					editorUi.fireEvent(new mxEventObject('customFontsChanged'));
-				}), parent);
-				
+					return 0;
+				}
+			});
+			
+			if (entries.length > 0)
+			{
+				for (var i = 0; i < entries.length; i++)
+				{
+					addItem(entries[i].name, entries[i].url,
+						true, entries[i].label);
+				}
+
 				menu.addSeparator(parent);
 			}
-			else
+			
+			menu.addItem(mxResources.get('reset'), null, mxUtils.bind(this, function()
 			{
-				//Load custom fonts already in the Graph
-				var extFonts = this.editorUi.editor.graph.extFonts;
-				
-				//Merge external fonts with custom fonts
-				if (extFonts != null && extFonts.length > 0)
-				{
-					var custMap = {}, changed = false;
-					
-					for (var i = 0; i < this.customFonts.length; i++)
-					{
-						custMap[this.customFonts[i].name] = true;
-					}
-					
-					for (var i = 0; i < extFonts.length; i++)
-					{
-						if (!custMap[extFonts[i].name])
-						{
-							this.customFonts.push(extFonts[i]);
-							changed = true;
-						}
-					}
-					
-					if (changed)
-					{
-						this.editorUi.fireEvent(new mxEventObject('customFontsChanged', 'customFonts', this.customFonts));
-					}
-				}
-				
-				if (this.customFonts.length > 0)
-				{
-					for (var i = 0; i < this.customFonts.length; i++)
-					{
-						var name = this.customFonts[i].name, url = this.customFonts[i].url;
-						addItem(name, url, true);
-						
-						//Load external fonts without saving them to the file
-						this.editorUi.editor.graph.addExtFont(name, url, true);
-					}
-					
-					menu.addSeparator(parent);
-					
-					menu.addItem(mxResources.get('reset'), null, mxUtils.bind(this, function()
-					{
-						var change = new ChangeExtFonts(this.editorUi, [], []);
-						editorUi.editor.graph.model.execute(change);
-					}), parent);
-					
-					menu.addSeparator(parent);
-				}
-			}
+				this.customFonts = [];
+				editorUi.fireEvent(new mxEventObject('customFontsChanged'));
+			}), parent);
+			
+			menu.addSeparator(parent);
 			
 			menu.addItem(mxResources.get('custom') + '...', null, mxUtils.bind(this, function()
 			{
@@ -5744,7 +5526,7 @@
 				var curUrl = null;
 				
 				// Handles in-place editing custom fonts via font family lookup
-				if (urlParams['ext-fonts'] != '1' && graph.isEditing())
+				if (graph.isEditing())
 				{
 					var node = graph.getSelectedEditingElement();
 
@@ -5755,19 +5537,50 @@
 						if (css != null)
 						{
 							curFontName = Graph.stripQuotes(css.fontFamily);
-							curUrl = Graph.getFontUrl(curFontName, null);
+
+							// Finds the URL for the current font by finding the nearest parent element
+							// with a data-font-src attribute or the fontSource attribute from the cell
+							var state = graph.getView().getState(graph.cellEditor.getEditingCell());
+							var curUrl = (state != null) ? state.style['fontSource'] : null;
+			    			
+			    			if (curUrl != null)
+			    			{
+				    			curUrl = decodeURIComponent(curUrl);
+							}
+
+							var temp = node;
+
+							while (temp != null && temp != graph.cellEditor.textarea)
+							{
+								if (temp.nodeType == mxConstants.NODETYPE_ELEMENT)
+								{
+									if (temp.getAttribute('data-font-src') != null)
+									{
+										curUrl = temp.getAttribute('data-font-src');
+										break;
+									}
+									else if (temp.getAttribute('face') == curFontName)
+									{
+										// Means that a system font is used for the element
+										curUrl = null;
+										break;
+									}
+								}
+
+								temp = temp.parentNode;
+							}
 							
 							if (curUrl != null)
 							{
-			    				if (Graph.isGoogleFontUrl(curUrl))
-			    				{
-			    					curUrl = null;
-			    					curType = 'g';
-			    				}
-			    				else
-			    				{
-			    					curType = 'w';
-			    				}
+								if (Graph.isGoogleFontUrl(curUrl))
+								{
+									curUrl = null;
+									curType = 'g';
+								}
+								else
+								{
+									curType = 'w';
+								}
 							}
 						}
 					}
@@ -5779,47 +5592,22 @@
 			    	if (state != null)
 			    	{
 			    		curFontName = state.style[mxConstants.STYLE_FONTFAMILY] || curFontName;
-			    		
-			    		if (urlParams['ext-fonts'] != '1')
-			    		{
-			    			var temp = state.style['fontSource'];
-			    			
-			    			if (temp != null)
-			    			{
-				    			temp = decodeURIComponent(temp);
-								
-			    				if (Graph.isGoogleFontUrl(temp))
-			    				{
-			    					curType = 'g';
-			    				}
-			    				else
-			    				{
-			    					curType = 'w';
-				    				curUrl = temp;
-			    				}
-			    			}
-			    		}
-			    		else
-			    		{
-			    			curType = state.style['FType'] || curType;
-			    		
-			    			if (curType == 'w')
-			    			{
-				    			var extFonts = this.editorUi.editor.graph.extFonts;
-				    			var webFont = null;
-				    			
-				    			if (extFonts != null)
-			    				{
-				    				webFont = extFonts.find(function(ef)
-		    						{
-				    					return ef.name == curFontName;
-		    						});
-				    			}
-				    			
-				    			// TODO: Resource is not defined
-				    			curUrl = webFont != null? webFont.url : mxResources.get('urlNotFound', null, 'URL not found');
-			    			}
-			    		}
+						var temp = state.style['fontSource'];
+						
+						if (temp != null)
+						{
+							temp = decodeURIComponent(temp);
+							
+							if (Graph.isGoogleFontUrl(temp))
+							{
+								curType = 'g';
+							}
+							else
+							{
+								curType = 'w';
+								curUrl = temp;
+							}
+						}
 			    	}
 				}
 		    	
@@ -5847,7 +5635,9 @@
 					
 					if (fontName != null && fontName.length > 0)
 					{
-						if (urlParams['ext-fonts'] != '1' && graph.isEditing())
+						this.addCustomFont(fontName, fontUrl);
+
+						if (graph.isEditing())
 						{
 							graph.setFont(fontName, fontUrl);
 						}
@@ -5858,47 +5648,10 @@
 							try
 							{
 								graph.stopEditing(false);
-								
-								if (urlParams['ext-fonts'] != '1')
-								{
-									graph.setCellStyles(mxConstants.STYLE_FONTFAMILY, fontName);
-									graph.setCellStyles('fontSource', (fontUrl != null) ?
-										encodeURIComponent(fontUrl) : null);
-									graph.setCellStyles('FType', null);
-								}
-								else
-								{
-									graph.setCellStyles(mxConstants.STYLE_FONTFAMILY, fontName);
-									
-									if (type != 's')
-									{
-										graph.setCellStyles('FType', type);
-										
-										if (fontUrl.indexOf('http://') == 0)
-										{
-											fontUrl = PROXY_URL + '?url=' + encodeURIComponent(fontUrl);
-										}
-										
-										this.editorUi.editor.graph.addExtFont(fontName, fontUrl);
-									}
-								}
-								
-								var addToCustom = true;
-								
-								for (var i = 0; i < this.customFonts.length; i++)
-								{
-									if (this.customFonts[i].name == fontName)
-									{
-										addToCustom = false;
-										break;
-									}
-								}
-								
-								if (addToCustom)
-								{
-									this.customFonts.push({name: fontName, url: fontUrl});
-									this.editorUi.fireEvent(new mxEventObject('customFontsChanged', 'customFonts', this.customFonts));
-								}
+								graph.setCellStyles(mxConstants.STYLE_FONTFAMILY, fontName);
+								graph.setCellStyles('fontSource', (fontUrl != null) ?
+									encodeURIComponent(fontUrl) : null);
+								graph.setCellStyles('FType', null);
 							}
 							finally
 							{

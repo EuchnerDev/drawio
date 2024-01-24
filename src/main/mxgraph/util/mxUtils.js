@@ -3156,7 +3156,7 @@ var mxUtils =
 	 * 
 	 * Returns the distance between a line defined by two points and a point.
 	 * To get the distance between a point and a segment (with a specific
-	 * length) use <mxUtils.ptSeqDistSq>.
+	 * length) use <mxUtils.ptSegDistSq>.
 	 * 
 	 * Parameters:
 	 * 
@@ -3279,6 +3279,36 @@ var mxUtils =
 		}
 	},
 
+	/**
+	 * Function: createElementNs
+	 * 
+	 * Helper function for creating an element in a namespace.
+	 * 
+	 * Parameters:
+	 * 
+	 * doc - Owner document of the new element.
+	 * ns - Namespace for the element.
+	 * tagName - Qualified name of the element.
+	 */
+	createElementNs: function(doc, ns, tagName)
+	{
+		if (doc.createElementNS != null)
+		{
+			return doc.createElementNS(ns, tagName);
+		}
+		else
+		{
+			var elt = doc.createElement(tagName);
+			
+			if (namespace != null)
+			{
+				elt.setAttribute('xmlns', ns);
+			}
+			
+			return elt;
+		}
+	},
+	
 	/**
 	 * Function: createImage
 	 * 
